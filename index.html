@@ -677,6 +677,13 @@
   // LOGIKA APLIKASI (tidak diubah dari versi Apps Script)
   // ======================================================================
   let STATE = { wallets: [], txType: 'expense' };
+  function todayLocalISO(){
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return y+'-'+m+'-'+day;
+  }
 
   function fmtRp(n){
     n = Math.round(Number(n) || 0);
@@ -717,7 +724,7 @@
   // ---------- INIT ----------
   window.addEventListener('load', () => {
     document.getElementById('greetingText').textContent = greetingByTime() + ' 👋';
-    document.getElementById('tx-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('tx-date').value = todayLocalISO();
     google.script.run.withSuccessHandler(onBootstrap).getBootstrapData();
   });
 
@@ -760,7 +767,7 @@
     setTxType(type || 'expense');
     document.getElementById('tx-amount').value = '';
     document.getElementById('tx-note').value = '';
-    document.getElementById('tx-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('tx-date').value = todayLocalISO();
     openModal('modal-tx');
   }
   function submitTransaction(){
@@ -1175,7 +1182,7 @@
       + '<div class="fld"><span>Tipe</span><span>' + (txn.type==='income'?'Pemasukan':'Pengeluaran') + '</span></div>'
       + '<div class="fld"><span>Dompet</span><select class="aitxn-wallet">' + walletOptions + '</select></div>'
       + '<div class="fld"><span>Kategori/Sumber</span><input class="aitxn-cat" value="' + escapeHtml(txn.category || txn.source || '') + '"></div>'
-      + '<div class="fld"><span>Tanggal</span><input type="date" class="aitxn-date" value="' + (txn.date || new Date().toISOString().slice(0,10)) + '"></div>'
+      + '<div class="fld"><span>Tanggal</span><input type="date" class="aitxn-date" value="' + (txn.date || todayLocalISO()) + '"></div>'
       + '<div class="actions"><button class="btn-sm green" onclick="confirmAiTxn(\''+cardId+'\', \''+txn.type+'\')">✔ Simpan</button>'
       + '<button class="btn-sm ghost" onclick="document.getElementById(\''+cardId+'\').remove()">✕ Batal</button></div>';
     box.appendChild(card);
