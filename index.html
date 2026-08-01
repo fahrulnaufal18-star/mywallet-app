@@ -1176,7 +1176,7 @@
       + '<div class="fld"><span>Dompet</span><select class="aitxn-wallet">' + walletOptions + '</select></div>'
       + '<div class="fld"><span>Kategori/Sumber</span><input class="aitxn-cat" value="' + escapeHtml(txn.category || txn.source || '') + '"></div>'
       + '<div class="fld"><span>Tanggal</span><input type="date" class="aitxn-date" value="' + (txn.date || new Date().toISOString().slice(0,10)) + '"></div>'
-      + '<div class="actions"><button class="btn-sm green" onclick="confirmAiTxn(\''+cardId+'\', '+JSON.stringify(txn.type)+')">✔ Simpan</button>'
+      + '<div class="actions"><button class="btn-sm green" onclick="confirmAiTxn(\''+cardId+'\', \''+txn.type+'\')">✔ Simpan</button>'
       + '<button class="btn-sm ghost" onclick="document.getElementById(\''+cardId+'\').remove()">✕ Batal</button></div>';
     box.appendChild(card);
     box.scrollTop = box.scrollHeight;
@@ -1199,6 +1199,8 @@
       card.remove();
       google.script.run.withSuccessHandler(onBootstrap).getBootstrapData();
       if (document.getElementById('page-transaksi').classList.contains('active')) loadTransactions();
+    }).withFailureHandler((err)=>{
+      showToast('Gagal menyimpan: ' + (err.message || err));
     }).addTransaction(payload);
   }
 
