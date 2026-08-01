@@ -232,7 +232,7 @@
   <div class="page active" id="page-beranda">
     <div class="header-row">
       <div class="greeting">
-        <h1 id="greetingText">Selamat Datang! 👋</h1>
+        <h1 id="greetingText">Selamat Datang! Naufal 👋</h1>
         <p>Semangat mengatur keuanganmu hari ini ya! ✨</p>
       </div>
       <button class="icon-btn" onclick="showPage('pengaturan')">⚙️</button>
@@ -627,7 +627,7 @@
   // GANTI URL DI BAWAH INI dengan URL deploy Web App Apps Script kamu
   // (Deploy > Manage deployments > copy "Web app URL", yang berakhiran /exec)
   // ======================================================================
-  const APPS_SCRIPT_API_URL = 'https://script.google.com/a/macros/napocutid.com/s/AKfycbzEqg7LiRFPBC3cQG24yz9wlfVbZqnNNyoWn7vpYoe4mnRXDKyaT3CJZrThdx5Cf_nj/exec';
+  const APPS_SCRIPT_API_URL = 'https://script.google.com/macros/s/AKfycbwxJsZr63vsyvxf5U7TtFTsW_JzLOiVUTrwcON1a5k1hAJK0kjf3f_OsZ0Gz_9SxZ5X/exec';
 
   function _gsCallApi(fn, args, successCb, failureCb) {
     fetch(APPS_SCRIPT_API_URL, {
@@ -708,10 +708,10 @@
 
   function greetingByTime(){
     const h = new Date().getHours();
-    if (h < 11) return 'Selamat Pagi!';
-    if (h < 15) return 'Selamat Siang!';
-    if (h < 18) return 'Selamat Sore!';
-    return 'Selamat Malam!';
+    if (h < 11) return 'Selamat Pagi! Naufal';
+    if (h < 15) return 'Selamat Siang! Naufal';
+    if (h < 18) return 'Selamat Sore! Naufal';
+    return 'Selamat Malam! Naufal';
   }
 
   // ---------- INIT ----------
