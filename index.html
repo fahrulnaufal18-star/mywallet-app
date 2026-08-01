@@ -196,6 +196,8 @@
   .save-btn.green{background:var(--green);}
   .empty-state{text-align:center;color:var(--text-muted);font-size:13px;padding:30px 10px;}
 
+  #loading-bar{position:fixed;top:0;left:0;height:3px;width:0%;background:linear-gradient(90deg,#818cf8,#2dd4bf);z-index:9999;transition:width .3s ease,opacity .3s ease;opacity:0;}
+  #loading-bar.active{opacity:1;}
   .toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#101828;color:#fff;padding:10px 18px;border-radius:12px;font-size:13px;z-index:200;opacity:0;transition:opacity .25s;pointer-events:none;}
   .toast.show{opacity:1;}
 
@@ -226,6 +228,7 @@
 </style>
 </head>
 <body>
+<div id="loading-bar"></div>
 <div id="app">
 
   <!-- ===================== PAGE: BERANDA ===================== -->
@@ -629,7 +632,26 @@
   // ======================================================================
   const APPS_SCRIPT_API_URL = 'https://script.google.com/macros/s/AKfycbwxJsZr63vsyvxf5U7TtFTsW_JzLOiVUTrwcON1a5k1hAJK0kjf3f_OsZ0Gz_9SxZ5X/exec';
 
+  let _loadingCount = 0;
+  function showLoadingBar(){
+    _loadingCount++;
+    const bar = document.getElementById('loading-bar');
+    bar.classList.add('active');
+    bar.style.width = '20%';
+    clearTimeout(bar._growTimer);
+    bar._growTimer = setTimeout(()=>{ bar.style.width = '75%'; }, 200);
+  }
+  function hideLoadingBar(){
+    _loadingCount = Math.max(0, _loadingCount - 1);
+    if (_loadingCount > 0) return;
+    const bar = document.getElementById('loading-bar');
+    clearTimeout(bar._growTimer);
+    bar.style.width = '100%';
+    setTimeout(()=>{ bar.classList.remove('active'); bar.style.width = '0%'; }, 300);
+  }
+
   function _gsCallApi(fn, args, successCb, failureCb) {
+    showLoadingBar();
     fetch(APPS_SCRIPT_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight
@@ -637,6 +659,7 @@
     })
       .then(r => r.text().then(text => ({ status: r.status, text })))
       .then(({ status, text }) => {
+        hideLoadingBar();
         let res;
         try {
           res = JSON.parse(text);
@@ -646,7 +669,7 @@
         if (res.ok) { if (successCb) successCb(res.data); }
         else { const err = new Error(res.error); if (failureCb) failureCb(err); else console.error(err); }
       })
-      .catch(err => { if (failureCb) failureCb(err); else console.error(err); });
+      .catch(err => { hideLoadingBar(); if (failureCb) failureCb(err); else console.error(err); });
   }
 
   function _gsMakeRunner(state) {
@@ -728,10 +751,22 @@
   }
 
   // ---------- INIT ----------
+  const BOOTSTRAP_CACHE_KEY = 'mywallet_bootstrap_cache_v1';
   window.addEventListener('load', () => {
     document.getElementById('greetingText').textContent = greetingByTime() + ' 👋';
     document.getElementById('tx-date').value = todayLocalISO();
-    google.script.run.withSuccessHandler(onBootstrap).getBootstrapData();
+
+    // Tampilkan data dari cache dulu (kalau ada) biar langsung kelihatan tanpa nunggu server
+    try {
+      const cached = localStorage.getItem(BOOTSTRAP_CACHE_KEY);
+      if (cached) onBootstrap(JSON.parse(cached));
+    } catch (e) { /* abaikan kalau cache rusak/tidak ada */ }
+
+    // Lalu tetap ambil data terbaru dari server di belakang layar
+    google.script.run.withSuccessHandler((data) => {
+      onBootstrap(data);
+      try { localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage penuh, lewati */ }
+    }).getBootstrapData();
   });
 
   function onBootstrap(data){
