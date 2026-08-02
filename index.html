@@ -198,6 +198,20 @@
 
   #loading-bar{position:fixed;top:0;left:0;height:3px;width:0%;background:linear-gradient(90deg,#818cf8,#2dd4bf);z-index:9999;transition:width .3s ease,opacity .3s ease;opacity:0;}
   #loading-bar.active{opacity:1;}
+
+  /* AUTH / LOGIN */
+  #auth-screen{
+    display:none; min-height:100vh; align-items:center; justify-content:center; padding:24px;
+    background:linear-gradient(160deg,#818cf8,#2dd4bf);
+  }
+  .auth-card{background:#fff;border-radius:24px;padding:28px 24px;width:100%;max-width:380px;box-shadow:0 20px 40px rgba(0,0,0,.2);}
+  .auth-logo{width:64px;height:64px;border-radius:18px;margin:0 auto 16px;display:block;}
+  .auth-title{text-align:center;font-size:20px;font-weight:800;margin-bottom:4px;}
+  .auth-sub{text-align:center;color:var(--text-muted);font-size:13px;margin-bottom:20px;}
+  .auth-tabs{display:flex;background:#f2f4f7;border-radius:14px;padding:4px;margin-bottom:18px;}
+  .auth-tabs button{flex:1;border:none;background:none;padding:10px 4px;border-radius:10px;font-size:13px;font-family:inherit;cursor:pointer;color:var(--text-muted);}
+  .auth-tabs button.active{background:#fff;color:var(--text-dark);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  .auth-error{font-size:12px;color:#ef4444;margin-top:10px;min-height:16px;}
   .toast{position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#101828;color:#fff;padding:10px 18px;border-radius:12px;font-size:13px;z-index:200;opacity:0;transition:opacity .25s;pointer-events:none;}
   .toast.show{opacity:1;}
 
@@ -226,16 +240,36 @@
   .ai-input-row{display:flex;gap:8px;align-items:center;margin-top:10px;}
   .ai-input-row .field-input{flex:1;}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
 <div id="loading-bar"></div>
-<div id="app">
+
+<div id="auth-screen">
+  <div class="auth-card">
+    <img src="icon-192.png" class="auth-logo" alt="MyWallet">
+    <div class="auth-title">MyWallet</div>
+    <div class="auth-sub">Masuk untuk mengatur keuanganmu</div>
+    <div class="auth-tabs">
+      <button id="auth-tab-signin" class="active" onclick="setAuthMode('signin')">Masuk</button>
+      <button id="auth-tab-signup" onclick="setAuthMode('signup')">Daftar</button>
+    </div>
+    <div class="field-label">Email</div>
+    <input class="field-input" type="email" id="auth-email" placeholder="kamu@email.com" autocomplete="email">
+    <div class="field-label">Password</div>
+    <input class="field-input" type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password">
+    <div class="auth-error" id="auth-error"></div>
+    <button class="save-btn" id="auth-submit-btn" onclick="submitAuth()">Masuk</button>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
 
   <!-- ===================== PAGE: BERANDA ===================== -->
   <div class="page active" id="page-beranda">
     <div class="header-row">
       <div class="greeting">
-        <h1 id="greetingText">Selamat Datang! Naufal 👋</h1>
+        <h1 id="greetingText">Selamat Datang! 👋</h1>
         <p>Semangat mengatur keuanganmu hari ini ya! ✨</p>
       </div>
       <button class="icon-btn" onclick="showPage('pengaturan')">⚙️</button>
@@ -408,6 +442,10 @@
       </div>
     </div>
     <div id="subs-list"></div>
+
+    <div class="white-card" style="margin-top:20px;">
+      <button class="btn-sm ghost" style="width:100%;" onclick="logout()">🚪 Keluar (Logout)</button>
+    </div>
   </div>
 
 </div>
@@ -626,11 +664,12 @@
 
 <script>
   // ======================================================================
-  // JEMBATAN API: meniru google.script.run tapi lewat fetch() ke Apps Script
-  // GANTI URL DI BAWAH INI dengan URL deploy Web App Apps Script kamu
-  // (Deploy > Manage deployments > copy "Web app URL", yang berakhiran /exec)
+  // KONFIGURASI SUPABASE — ganti sesuai project kamu
   // ======================================================================
-  const APPS_SCRIPT_API_URL = 'https://script.google.com/macros/s/AKfycbwxJsZr63vsyvxf5U7TtFTsW_JzLOiVUTrwcON1a5k1hAJK0kjf3f_OsZ0Gz_9SxZ5X/exec';
+  const SUPABASE_URL = 'https://byiiyoxwafbvbfyykpxf.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5aWl5b3h3YWZidmJmeXlrcHhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2NDI2MjUsImV4cCI6MjEwMTIxODYyNX0.Gx-YW5d8bLlOkA7OmpHoLiD1QrZOUTjjfk9AqBVoeQM';
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let _loadingCount = 0;
   function showLoadingBar(){
@@ -650,26 +689,280 @@
     setTimeout(()=>{ bar.classList.remove('active'); bar.style.width = '0%'; }, 300);
   }
 
-  function _gsCallApi(fn, args, successCb, failureCb) {
+  // ======================================================================
+  // Helper tanggal lokal (dipakai handler di bawah)
+  // ======================================================================
+  function _localISO(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return y+'-'+m+'-'+day;
+  }
+
+  // ======================================================================
+  // Mapper: baris tabel Supabase (snake_case) -> bentuk objek yang dipakai UI (camelCase)
+  // ======================================================================
+  function mapWallet(w){ return { id: w.id, name: w.name, type: w.type, balance: Number(w.balance) }; }
+  function mapTx(t){ return { id: t.id, date: t.date, type: t.type, amount: Number(t.amount), walletId: t.wallet_id, toWalletId: t.to_wallet_id, category: t.category, source: t.source, note: t.note }; }
+  function mapDebt(d){ return { id: d.id, name: d.name, totalPrincipal: Number(d.total_principal), remaining: Number(d.remaining), monthlyInstallment: Number(d.monthly_installment), status: d.status }; }
+  function mapReceivable(r){ return { id: r.id, name: r.name, borrower: r.borrower, totalLent: Number(r.total_lent), remaining: Number(r.remaining), dueDate: r.due_date, status: r.status }; }
+  function mapGoal(g){ return { id: g.id, name: g.name, icon: g.icon, target: Number(g.target), current: Number(g.current), targetDate: g.target_date }; }
+  function mapSub(s){ return { id: s.id, name: s.name, category: s.category, walletId: s.wallet_id, amount: Number(s.amount), cycle: s.cycle, dueDate: s.due_date }; }
+
+  async function _computeFinancialHealth(){
+    const { data: wallets } = await supabase.from('wallets').select('balance');
+    const totalBalance = (wallets||[]).reduce((s,w)=>s+Number(w.balance||0),0);
+    const now = new Date();
+    const start = new Date(now); start.setDate(start.getDate()-29);
+    const { data: txs } = await supabase.from('transactions').select('type,amount').gte('date', _localISO(start)).lte('date', _localISO(now));
+    const income = (txs||[]).filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+    const expense = (txs||[]).filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+    const savingsRatio = income>0 ? Math.max(0,(income-expense)/income) : 0;
+    const { data: budgets } = await supabase.from('budgets').select('limit');
+    const totalLimit = (budgets||[]).reduce((s,b)=>s+Number(b.limit||0),0);
+    const budgetDiscipline = totalLimit>0 ? Math.min(1, expense/totalLimit) : 0;
+    const runwayMonths = expense>0 ? totalBalance/expense : 0;
+    const { data: debts } = await supabase.from('debts').select('monthly_installment,status').neq('status','lunas');
+    const totalInstallment = (debts||[]).reduce((s,d)=>s+Number(d.monthly_installment||0),0);
+    const debtBurden = income>0 ? Math.min(1, totalInstallment/income) : 0;
+    const score = Math.round(savingsRatio*30 + (1-budgetDiscipline)*20 + Math.min(runwayMonths/12,1)*25 + (1-debtBurden)*25);
+    let label = 'PERLU PERHATIAN';
+    if (score>=80) label='SANGAT SEHAT'; else if(score>=60) label='SEHAT'; else if(score>=40) label='KURANG SEHAT';
+    return { score: Math.max(0,Math.min(100,score)), label, savingsRatio: Math.round(savingsRatio*100), budgetDiscipline: Math.round(budgetDiscipline*100), runwayMonths: Math.round(runwayMonths*10)/10, debtBurden: Math.round(debtBurden*100) };
+  }
+
+  // ======================================================================
+  // API_HANDLERS: satu fungsi per nama yang sebelumnya ada di Apps Script.
+  // Ini yang membuat SEMUA titik pemanggilan di UI (google.script.run....) tetap jalan tanpa diubah.
+  // ======================================================================
+  const API_HANDLERS = {
+    getWallets: async () => {
+      const { data, error } = await supabase.from('wallets').select('*').order('created_at');
+      if (error) throw error;
+      return data.map(mapWallet);
+    },
+    addWallet: async (payload) => {
+      const { data, error } = await supabase.from('wallets').insert({ name: payload.name, type: payload.type || 'cash', balance: Number(payload.balance)||0 }).select().single();
+      if (error) throw error;
+      return mapWallet(data);
+    },
+    deleteWallet: async (id) => {
+      const { error } = await supabase.from('wallets').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    },
+
+    getTransactions: async (start, end) => {
+      let q = supabase.from('transactions').select('*').order('date', { ascending: false }).order('created_at', { ascending: false });
+      if (start && end) q = q.gte('date', start).lte('date', end);
+      const { data, error } = await q;
+      if (error) throw error;
+      return data.map(mapTx);
+    },
+    addTransaction: async (payload) => {
+      const { data, error } = await supabase.rpc('add_transaction', {
+        p_type: payload.type, p_amount: Number(payload.amount), p_wallet_id: payload.walletId || null,
+        p_to_wallet_id: payload.toWalletId || null, p_category: payload.category || '', p_source: payload.source || '',
+        p_note: payload.note || '', p_date: payload.date || null
+      });
+      if (error) throw error;
+      return mapTx(data);
+    },
+    deleteTransaction: async (id) => {
+      const { data, error } = await supabase.rpc('delete_transaction', { p_id: id });
+      if (error) throw error;
+      return data;
+    },
+
+    getDashboardSummary: async () => {
+      const { data: wallets } = await supabase.from('wallets').select('*');
+      const totalBalance = (wallets||[]).reduce((s,w)=>s+Number(w.balance||0),0);
+      const now = new Date();
+      const start = new Date(now); start.setDate(start.getDate()-29);
+      const { data: txs } = await supabase.from('transactions').select('type,amount').gte('date', _localISO(start)).lte('date', _localISO(now));
+      const income = (txs||[]).filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+      const expense = (txs||[]).filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+      return { totalBalance, income, expense, budgetTersisa: totalBalance - expense, wallets: (wallets||[]).map(mapWallet) };
+    },
+    getFinancialHealth: _computeFinancialHealth,
+    getReportData: async (start, end) => {
+      let q = supabase.from('transactions').select('type,amount,category,date');
+      if (start && end) q = q.gte('date', start).lte('date', end);
+      const { data: txs, error: e1 } = await q;
+      if (e1) throw e1;
+      const { data: wallets, error: e2 } = await supabase.from('wallets').select('balance');
+      if (e2) throw e2;
+      const income = (txs||[]).filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+      const expense = (txs||[]).filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+      const byCategory = {};
+      (txs||[]).filter(t=>t.type==='expense').forEach(t=>{ byCategory[t.category]=(byCategory[t.category]||0)+Number(t.amount); });
+      const topExpenses = Object.keys(byCategory).map(cat=>({ category: cat, amount: byCategory[cat], pct: expense>0?Math.round(byCategory[cat]/expense*100):0 })).sort((a,b)=>b.amount-a.amount);
+      const totalBalance = (wallets||[]).reduce((s,w)=>s+Number(w.balance||0),0);
+      const health = await _computeFinancialHealth();
+      return { income, expense, topExpenses, totalBalance, health };
+    },
+
+    getBudgets: async () => {
+      const { data: budgets, error: e1 } = await supabase.from('budgets').select('*');
+      if (e1) throw e1;
+      const now = new Date();
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      const last = new Date(now.getFullYear(), now.getMonth()+1, 0);
+      const { data: txs, error: e2 } = await supabase.from('transactions').select('category,amount,type,date').eq('type','expense').gte('date', _localISO(first)).lte('date', _localISO(last));
+      if (e2) throw e2;
+      return (budgets||[]).map(b => {
+        const used = (txs||[]).filter(t=>t.category===b.category).reduce((s,t)=>s+Number(t.amount),0);
+        return { category: b.category, group: b.group, limit: Number(b.limit), used, pct: Number(b.limit)>0 ? Math.round(used/Number(b.limit)*100) : 0 };
+      });
+    },
+    saveBudget: async (category, group, limit) => {
+      const { error } = await supabase.from('budgets').upsert({ category, group, limit: Number(limit) });
+      if (error) throw error;
+      return true;
+    },
+    deleteBudget: async (category) => {
+      const { error } = await supabase.from('budgets').delete().eq('category', category);
+      if (error) throw error;
+      return true;
+    },
+
+    getDebts: async () => {
+      const { data, error } = await supabase.from('debts').select('*').order('created_at');
+      if (error) throw error;
+      return data.map(mapDebt);
+    },
+    addDebt: async (payload) => {
+      const { data, error } = await supabase.from('debts').insert({
+        name: payload.name, total_principal: Number(payload.totalPrincipal),
+        remaining: Number(payload.remaining !== undefined ? payload.remaining : payload.totalPrincipal),
+        monthly_installment: Number(payload.monthlyInstallment)||0, status: 'aktif'
+      }).select().single();
+      if (error) throw error;
+      return mapDebt(data);
+    },
+    payDebt: async (id, amount, walletId) => {
+      const { data, error } = await supabase.rpc('pay_debt', { p_id: id, p_amount: Number(amount), p_wallet_id: walletId || null });
+      if (error) throw error;
+      return data;
+    },
+    deleteDebt: async (id) => {
+      const { error } = await supabase.from('debts').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    },
+
+    getReceivables: async () => {
+      const { data, error } = await supabase.from('receivables').select('*').order('created_at');
+      if (error) throw error;
+      return data.map(mapReceivable);
+    },
+    addReceivable: async (payload) => {
+      const { data, error } = await supabase.from('receivables').insert({
+        name: payload.name, borrower: payload.borrower, total_lent: Number(payload.totalLent),
+        remaining: Number(payload.remaining !== undefined ? payload.remaining : payload.totalLent),
+        due_date: payload.dueDate || null, status: 'aktif'
+      }).select().single();
+      if (error) throw error;
+      return mapReceivable(data);
+    },
+    receivePayment: async (id, amount, walletId) => {
+      const { data, error } = await supabase.rpc('receive_payment', { p_id: id, p_amount: Number(amount), p_wallet_id: walletId || null });
+      if (error) throw error;
+      return data;
+    },
+    deleteReceivable: async (id) => {
+      const { error } = await supabase.from('receivables').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    },
+
+    getGoals: async () => {
+      const { data, error } = await supabase.from('goals').select('*').order('created_at');
+      if (error) throw error;
+      return data.map(mapGoal);
+    },
+    addGoal: async (payload) => {
+      const { data, error } = await supabase.from('goals').insert({
+        name: payload.name, icon: payload.icon || '🎯', target: Number(payload.target),
+        current: Number(payload.current)||0, target_date: payload.targetDate || null
+      }).select().single();
+      if (error) throw error;
+      return mapGoal(data);
+    },
+    addGoalProgress: async (id, amount) => {
+      const { data, error } = await supabase.rpc('add_goal_progress', { p_id: id, p_amount: Number(amount) });
+      if (error) throw error;
+      return data;
+    },
+    deleteGoal: async (id) => {
+      const { error } = await supabase.from('goals').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    },
+
+    getSubscriptions: async () => {
+      const { data, error } = await supabase.from('subscriptions').select('*').order('created_at');
+      if (error) throw error;
+      return data.map(mapSub);
+    },
+    addSubscription: async (payload) => {
+      const { data, error } = await supabase.from('subscriptions').insert({
+        name: payload.name, category: payload.category || 'Entertainment', wallet_id: payload.walletId || null,
+        amount: Number(payload.amount), cycle: payload.cycle || 'Monthly', due_date: payload.dueDate || null
+      }).select().single();
+      if (error) throw error;
+      return mapSub(data);
+    },
+    deleteSubscription: async (id) => {
+      const { error } = await supabase.from('subscriptions').delete().eq('id', id);
+      if (error) throw error;
+      return true;
+    },
+
+    getChatHistory: async (limit) => {
+      const { data, error } = await supabase.from('chat_log').select('*').order('created_at', { ascending: false }).limit(limit || 40);
+      if (error) throw error;
+      return data.reverse().map(r => ({ timestamp: r.created_at, role: r.role, message: r.message }));
+    },
+    askWlltAi: async (message) => {
+      const { data, error } = await supabase.functions.invoke('wllt-ai', { body: { action: 'chat', message } });
+      if (error) throw error;
+      return data.data;
+    },
+    scanReceipt: async (imageBase64, mimeType) => {
+      const { data, error } = await supabase.functions.invoke('wllt-ai', { body: { action: 'scanReceipt', imageBase64, mimeType } });
+      if (error) throw error;
+      return data.data;
+    },
+
+    getBootstrapData: async () => {
+      const [wallets, dashboard, health, budgets, debts, receivables, goals, subscriptions, transactions] = await Promise.all([
+        API_HANDLERS.getWallets(),
+        API_HANDLERS.getDashboardSummary(),
+        _computeFinancialHealth(),
+        API_HANDLERS.getBudgets(),
+        API_HANDLERS.getDebts(),
+        API_HANDLERS.getReceivables(),
+        API_HANDLERS.getGoals(),
+        API_HANDLERS.getSubscriptions(),
+        API_HANDLERS.getTransactions(null, null)
+      ]);
+      return { wallets, dashboard, health, budgets, debts, receivables, goals, subscriptions, transactions };
+    }
+  };
+
+  async function _gsCallApi(fn, args, successCb, failureCb) {
     showLoadingBar();
-    fetch(APPS_SCRIPT_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // hindari CORS preflight
-      body: JSON.stringify({ fn, args })
-    })
-      .then(r => r.text().then(text => ({ status: r.status, text })))
-      .then(({ status, text }) => {
-        hideLoadingBar();
-        let res;
-        try {
-          res = JSON.parse(text);
-        } catch (e) {
-          throw new Error('Server tidak balas JSON (status ' + status + '). Kemungkinan file terlalu besar atau deployment belum "Anyone". Cuplikan respon: ' + text.slice(0, 120));
-        }
-        if (res.ok) { if (successCb) successCb(res.data); }
-        else { const err = new Error(res.error); if (failureCb) failureCb(err); else console.error(err); }
-      })
-      .catch(err => { hideLoadingBar(); if (failureCb) failureCb(err); else console.error(err); });
+    try {
+      const handler = API_HANDLERS[fn];
+      if (!handler) throw new Error('Fungsi "' + fn + '" tidak dikenali di API Supabase.');
+      const result = await handler(...args);
+      hideLoadingBar();
+      if (successCb) successCb(result);
+    } catch (err) {
+      hideLoadingBar();
+      if (failureCb) failureCb(err); else console.error(err);
+    }
   }
 
   function _gsMakeRunner(state) {
@@ -677,7 +970,6 @@
       get(_target, propKey) {
         if (propKey === 'withSuccessHandler') return (cb) => { state.successCb = cb; return _gsMakeRunner(state); };
         if (propKey === 'withFailureHandler') return (cb) => { state.failureCb = cb; return _gsMakeRunner(state); };
-        // propKey lainnya dianggap nama fungsi Apps Script yang mau dipanggil
         return (...args) => _gsCallApi(propKey, args, state.successCb, state.failureCb);
       }
     });
@@ -689,9 +981,63 @@
     get(_target, propKey) {
       if (propKey === 'withSuccessHandler') return (cb) => _gsMakeRunner({ successCb: cb, failureCb: null });
       if (propKey === 'withFailureHandler') return (cb) => _gsMakeRunner({ successCb: null, failureCb: cb });
-      // panggilan langsung tanpa handler, contoh: google.script.run.someFn(args)
       return (...args) => _gsCallApi(propKey, args, null, null);
     }
+  });
+
+  // ======================================================================
+  // AUTENTIKASI: gerbang login sebelum masuk ke aplikasi
+  // ======================================================================
+  function showAuthScreen(){
+    document.getElementById('auth-screen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+  function showApp(){
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    if (window._appBooted) return;
+    window._appBooted = true;
+    bootApp();
+  }
+
+  let authMode = 'signin';
+  function setAuthMode(mode){
+    authMode = mode;
+    document.getElementById('auth-tab-signin').classList.toggle('active', mode==='signin');
+    document.getElementById('auth-tab-signup').classList.toggle('active', mode==='signup');
+    document.getElementById('auth-submit-btn').textContent = mode==='signin' ? 'Masuk' : 'Daftar';
+  }
+  async function submitAuth(){
+    const email = document.getElementById('auth-email').value.trim();
+    const password = document.getElementById('auth-password').value;
+    const errEl = document.getElementById('auth-error');
+    errEl.textContent = '';
+    if (!email || !password) { errEl.textContent = 'Isi email dan password dulu ya.'; return; }
+    try {
+      if (authMode === 'signin') {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        errEl.style.color = '#22c55e';
+        errEl.textContent = 'Akun dibuat! Kalau diminta verifikasi email, cek inbox kamu, lalu login.';
+        return;
+      }
+    } catch (e) {
+      errEl.style.color = '#ef4444';
+      errEl.textContent = e.message || String(e);
+    }
+  }
+  function logout(){
+    supabase.auth.signOut().then(() => { window._appBooted = false; showAuthScreen(); });
+  }
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (session) showApp(); else showAuthScreen();
+  });
+  supabase.auth.getSession().then(({ data }) => {
+    if (data.session) showApp(); else showAuthScreen();
   });
 
   // Daftarkan service worker untuk mendukung "Install App" penuh di Chrome/Android
@@ -744,15 +1090,29 @@
 
   function greetingByTime(){
     const h = new Date().getHours();
-    if (h < 11) return 'Selamat Pagi! Naufal';
-    if (h < 15) return 'Selamat Siang! Naufal';
-    if (h < 18) return 'Selamat Sore! Naufal';
-    return 'Selamat Malam! Naufal';
+    if (h < 11) return 'Selamat Pagi!';
+    if (h < 15) return 'Selamat Siang!';
+    if (h < 18) return 'Selamat Sore!';
+    return 'Selamat Malam!';
   }
 
   // ---------- INIT ----------
   const BOOTSTRAP_CACHE_KEY = 'mywallet_bootstrap_cache_v1';
-  window.addEventListener('load', () => {
+
+  // Helper universal: tampilkan data cache dulu (kalau ada) biar instan,
+  // lalu tetap ambil data terbaru dari server di belakang layar.
+  function cachedApiLoad(cacheKey, fnName, args, renderFn){
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) renderFn(JSON.parse(cached));
+    } catch (e) { /* cache rusak/tidak ada, lewati */ }
+    google.script.run.withSuccessHandler((data) => {
+      renderFn(data);
+      try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch (e) { /* storage penuh */ }
+    })[fnName].apply(null, args);
+  }
+
+  function bootApp() {
     document.getElementById('greetingText').textContent = greetingByTime() + ' 👋';
     document.getElementById('tx-date').value = todayLocalISO();
 
@@ -767,7 +1127,7 @@
       onBootstrap(data);
       try { localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage penuh, lewati */ }
     }).getBootstrapData();
-  });
+  }
 
   function onBootstrap(data){
     STATE.wallets = data.wallets;
@@ -835,7 +1195,8 @@
   function loadTransactions(){
     const start = document.getElementById('tx-start').value;
     const end = document.getElementById('tx-end').value;
-    google.script.run.withSuccessHandler(renderTransactions).getTransactions(start || null, end || null);
+    const cacheKey = 'mywallet_cache_tx_' + (start||'all') + '_' + (end||'all');
+    cachedApiLoad(cacheKey, 'getTransactions', [start || null, end || null], renderTransactions);
   }
   function renderTransactions(txs){
     const box = document.getElementById('tx-list');
@@ -865,7 +1226,7 @@
 
   // ---------- LAPORAN ----------
   function loadReport(){
-    google.script.run.withSuccessHandler(renderReport).getReportData(null, null);
+    cachedApiLoad('mywallet_cache_report', 'getReportData', [null, null], renderReport);
   }
   function renderReport(r){
     document.getElementById('rep-balance').textContent = fmtRp(r.totalBalance);
@@ -893,7 +1254,7 @@
   }
 
   // ---------- BUDGET ----------
-  function loadBudgets(){ google.script.run.withSuccessHandler(renderBudgets).getBudgets(); }
+  function loadBudgets(){ cachedApiLoad('mywallet_cache_budgets', 'getBudgets', [], renderBudgets); }
   function renderBudgets(list){
     const box = document.getElementById('budget-list');
     if (!list.length){ box.innerHTML = '<div class="empty-state">Belum ada budget</div>'; return; }
@@ -919,7 +1280,7 @@
   }
 
   // ---------- GOALS ----------
-  function loadGoals(){ google.script.run.withSuccessHandler(renderGoals).getGoals(); }
+  function loadGoals(){ cachedApiLoad('mywallet_cache_goals', 'getGoals', [], renderGoals); }
   function renderGoals(list){
     const box = document.getElementById('goals-list');
     if (!list.length){ box.innerHTML = '<div class="empty-state">Belum ada goal</div>'; return; }
@@ -963,7 +1324,7 @@
   }
 
   // ---------- DEBTS ----------
-  function loadDebts(){ google.script.run.withSuccessHandler(renderDebts).getDebts(); }
+  function loadDebts(){ cachedApiLoad('mywallet_cache_debts', 'getDebts', [], renderDebts); }
   function renderDebts(list){
     const totalRemaining = list.reduce((s,d)=> s + (d.status!=='lunas' ? Number(d.remaining) : 0), 0);
     const totalPrincipal = list.reduce((s,d)=> s + Number(d.totalPrincipal), 0);
@@ -1014,7 +1375,7 @@
   }
 
   // ---------- RECEIVABLES ----------
-  function loadReceivables(){ google.script.run.withSuccessHandler(renderReceivables).getReceivables(); }
+  function loadReceivables(){ cachedApiLoad('mywallet_cache_receivables', 'getReceivables', [], renderReceivables); }
   function renderReceivables(list){
     const totalRemaining = list.reduce((s,r)=> s + (r.status!=='lunas' ? Number(r.remaining) : 0), 0);
     const totalLent = list.reduce((s,r)=> s + Number(r.totalLent), 0);
@@ -1067,7 +1428,7 @@
   }
 
   // ---------- WALLETS ----------
-  function loadWallets(){ google.script.run.withSuccessHandler(renderWallets).getWallets(); }
+  function loadWallets(){ cachedApiLoad('mywallet_cache_wallets', 'getWallets', [], renderWallets); }
   function renderWallets(list){
     STATE.wallets = list; fillWalletSelects();
     const box = document.getElementById('wallets-list');
@@ -1097,7 +1458,7 @@
   }
 
   // ---------- SUBSCRIPTIONS ----------
-  function loadSubs(){ google.script.run.withSuccessHandler(renderSubs).getSubscriptions(); }
+  function loadSubs(){ cachedApiLoad('mywallet_cache_subs', 'getSubscriptions', [], renderSubs); }
   function renderSubs(list){
     const total = list.reduce((s,x)=> s + Number(x.amount), 0);
     document.getElementById('sub-total').textContent = fmtRp(total);

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mywallet-cache-v2';
+const CACHE_NAME = 'mywallet-cache-v3';
 const APP_SHELL = [
   './index.html',
   './manifest.json',
@@ -27,8 +27,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Jangan cache request ke Apps Script (data selalu live)
-  if (url.hostname.includes('script.google.com') || url.hostname.includes('googleusercontent.com')) {
+  // Jangan cache request ke Apps Script atau Supabase (data selalu live)
+  if (
+    url.hostname.includes('script.google.com') ||
+    url.hostname.includes('googleusercontent.com') ||
+    url.hostname.includes('supabase.co')
+  ) {
     event.respondWith(fetch(event.request));
     return;
   }
