@@ -445,6 +445,23 @@
   <!-- ===================== PAGE: PENGATURAN ===================== -->
   <div class="page" id="page-pengaturan">
     <div class="list-title">Pengaturan</div>
+    <div class="list-sub">Kelola akun & preferensi aplikasi</div>
+
+    <div class="white-card" style="margin-bottom:14px;">
+      <button class="btn-sm ghost" style="width:100%;text-align:left;" onclick="showPage('langganan')">🔁 Langganan &amp; Rutin Bulanan</button>
+    </div>
+
+    <div class="white-card">
+      <button class="btn-sm ghost" style="width:100%;" onclick="logout()">🚪 Keluar (Logout)</button>
+    </div>
+  </div>
+
+  <!-- ===================== PAGE: LANGGANAN ===================== -->
+  <div class="page" id="page-langganan">
+    <div class="list-title" style="display:flex;align-items:center;gap:8px;">
+      <button class="icon-btn" style="width:32px;height:32px;" onclick="showPage('pengaturan')">←</button>
+      <span>Langganan</span>
+    </div>
     <div class="list-sub">Berulang &amp; langganan bulananmu</div>
     <button class="btn-sm dark" style="margin-bottom:14px;" onclick="openSubModal()">+ Tambah Rutin</button>
 
@@ -455,10 +472,6 @@
       </div>
     </div>
     <div id="subs-list"></div>
-
-    <div class="white-card" style="margin-top:20px;">
-      <button class="btn-sm ghost" style="width:100%;" onclick="logout()">🚪 Keluar (Logout)</button>
-    </div>
   </div>
 
 </div>
@@ -624,6 +637,29 @@
     <div class="field-label">Saldo Awal (Rp)</div>
     <input class="field-input" type="number" id="wl-balance" value="0">
     <button class="save-btn" onclick="submitWallet()">Simpan</button>
+  </div>
+</div>
+
+<!-- ===================== MODAL: KONFIRMASI (pengganti confirm() bawaan browser) ===================== -->
+<div class="overlay" id="modal-confirm">
+  <div class="sheet">
+    <div class="sheet-head"><h2>Konfirmasi</h2><button class="close-x" onclick="closeModal('modal-confirm')">✕</button></div>
+    <div id="confirm-message" style="margin:8px 0 20px;color:var(--text-muted);"></div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn-sm ghost" style="flex:1;" onclick="closeModal('modal-confirm')">Batal</button>
+      <button class="btn-sm dark" style="flex:1;background:var(--red);" onclick="runConfirmYes()">Hapus</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL: GOAL PROGRESS ===================== -->
+<div class="overlay" id="modal-goal-add">
+  <div class="sheet">
+    <div class="sheet-head"><h2>Tambah Progress</h2><button class="close-x" onclick="closeModal('modal-goal-add')">✕</button></div>
+    <input type="hidden" id="ga-id">
+    <div class="field-label">Tambah Berapa (Rp)</div>
+    <input class="field-input" type="number" id="ga-amount" placeholder="Contoh: 100000">
+    <button class="save-btn" onclick="submitGoalAdd()">Simpan</button>
   </div>
 </div>
 
@@ -949,7 +985,7 @@
     },
 
     getBootstrapData: async () => {
-      const [wallets, dashboard, health, budgets, debts, receivables, goals, subscriptions, transactions] = await Promise.all([
+      const results = await Promise.allSettled([
         API_HANDLERS.getWallets(),
         API_HANDLERS.getDashboardSummary(),
         _computeFinancialHealth(),
@@ -960,7 +996,18 @@
         API_HANDLERS.getSubscriptions(),
         API_HANDLERS.getTransactions(null, null)
       ]);
-      return { wallets, dashboard, health, budgets, debts, receivables, goals, subscriptions, transactions };
+      const val = (r, fallback) => { if (r.status === 'fulfilled') return r.value; console.error(r.reason); return fallback; };
+      return {
+        wallets: val(results[0], []),
+        dashboard: val(results[1], { totalBalance:0, income:0, expense:0, budgetTersisa:0, wallets:[] }),
+        health: val(results[2], null),
+        budgets: val(results[3], []),
+        debts: val(results[4], []),
+        receivables: val(results[5], []),
+        goals: val(results[6], []),
+        subscriptions: val(results[7], []),
+        transactions: val(results[8], [])
+      };
     }
   };
 
@@ -1100,10 +1147,24 @@
     if (name === 'debts') loadDebts();
     if (name === 'receivables') loadReceivables();
     if (name === 'wallets') loadWallets();
-    if (name === 'pengaturan') loadSubs();
+    if (name === 'langganan') loadSubs();
   }
   function openModal(id){ document.getElementById(id).classList.add('active'); }
   function closeModal(id){ document.getElementById(id).classList.remove('active'); }
+
+  // Pengganti confirm() bawaan browser, biar tampilannya konsisten dengan desain app.
+  let _pendingConfirmCb = null;
+  function askConfirm(message, onYes){
+    document.getElementById('confirm-message').textContent = message;
+    _pendingConfirmCb = onYes;
+    openModal('modal-confirm');
+  }
+  function runConfirmYes(){
+    const cb = _pendingConfirmCb;
+    _pendingConfirmCb = null;
+    closeModal('modal-confirm');
+    if (cb) cb();
+  }
 
   function greetingByTime(){
     const h = new Date().getHours();
@@ -1186,6 +1247,12 @@
     document.getElementById('tx-amount').value = '';
     document.getElementById('tx-note').value = '';
     document.getElementById('tx-date').value = todayLocalISO();
+    // Pastikan dropdown Dompet selalu terisi, walau data awal (bootstrap) belum/gagal kebaca.
+    if (STATE.wallets && STATE.wallets.length){
+      fillWalletSelects();
+    } else {
+      google.script.run.withSuccessHandler((list)=>{ STATE.wallets = list; fillWalletSelects(); }).getWallets();
+    }
     openModal('modal-tx');
   }
   function submitTransaction(){
@@ -1307,7 +1374,7 @@
         +'<div style="font-weight:700;font-size:16px;margin:8px 0 2px;">'+g.name+'</div>'
         +'<div class="meta" style="color:var(--text-muted);font-size:12px;">Target: '+fmtRp(g.target)+'</div>'
         +'<div class="mini-progress" style="margin:12px 0 6px;"><i style="width:'+pct+'%;background:#22c55e;"></i></div>'
-        +'<div class="row1"><span style="font-weight:700;">'+fmtRp(g.current)+'</span><span style="color:var(--text-muted);">'+pct+'%</span></div>'
+        +'<div class="row1" style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;">'+fmtRp(g.current)+'</span><span style="color:var(--text-muted);">'+pct+'%</span></div>'
         +(g.targetDate ? '<div class="meta" style="margin-top:8px;">Target by: '+g.targetDate+'</div>' : '')
         +'<div class="actions"><button class="btn-sm dark" onclick="promptGoalAdd(\''+g.id+'\')">+ Tambah Progress</button>'
         +'<button class="btn-sm ghost" onclick="removeGoal(\''+g.id+'\')">Hapus</button></div></div>';
@@ -1331,13 +1398,22 @@
     });
   }
   function promptGoalAdd(id){
-    const amt = prompt('Tambah berapa (Rp)?');
-    if (!amt) return;
-    google.script.run.withSuccessHandler(()=>{ showToast('Progress ditambahkan'); loadGoals(); }).addGoalProgress(id, Number(amt));
+    document.getElementById('ga-id').value = id;
+    document.getElementById('ga-amount').value = '';
+    openModal('modal-goal-add');
+  }
+  function submitGoalAdd(){
+    const id = document.getElementById('ga-id').value;
+    const amt = Number(document.getElementById('ga-amount').value);
+    if (!amt || amt <= 0){ showToast('Isi jumlahnya dulu ya'); return; }
+    google.script.run.withSuccessHandler(()=>{
+      closeModal('modal-goal-add'); showToast('Progress ditambahkan'); loadGoals();
+    }).addGoalProgress(id, amt);
   }
   function removeGoal(id){
-    if (!confirm('Hapus goal ini?')) return;
-    google.script.run.withSuccessHandler(()=>{ showToast('Dihapus'); loadGoals(); }).deleteGoal(id);
+    askConfirm('Hapus goal ini?', () => {
+      google.script.run.withSuccessHandler(()=>{ showToast('Dihapus'); loadGoals(); }).deleteGoal(id);
+    });
   }
 
   // ---------- DEBTS ----------
@@ -1387,8 +1463,9 @@
     }).payDebt(id, amount, document.getElementById('pd-wallet').value);
   }
   function removeDebt(id){
-    if (!confirm('Hapus hutang ini?')) return;
-    google.script.run.withSuccessHandler(()=>{ showToast('Dihapus'); loadDebts(); }).deleteDebt(id);
+    askConfirm('Hapus hutang ini?', () => {
+      google.script.run.withSuccessHandler(()=>{ showToast('Dihapus'); loadDebts(); }).deleteDebt(id);
+    });
   }
 
   // ---------- RECEIVABLES ----------
@@ -1440,8 +1517,9 @@
     }).receivePayment(id, amount, document.getElementById('rp-wallet').value);
   }
   function removeReceivable(id){
-    if (!confirm('Hapus piutang ini?')) return;
-    google.script.run.withSuccessHandler(()=>{ showToast('Dihapus'); loadReceivables(); }).deleteReceivable(id);
+    askConfirm('Hapus piutang ini?', () => {
+      google.script.run.withSuccessHandler(()=>{ showToast('Dihapus'); loadReceivables(); }).deleteReceivable(id);
+    });
   }
 
   // ---------- WALLETS ----------
@@ -1470,8 +1548,9 @@
     }).addWallet({ name, type: document.getElementById('wl-type').value, balance: document.getElementById('wl-balance').value });
   }
   function removeWallet(id){
-    if (!confirm('Hapus dompet ini?')) return;
-    google.script.run.withSuccessHandler(()=>{ showToast('Dihapus'); loadWallets(); }).deleteWallet(id);
+    askConfirm('Hapus dompet ini?', () => {
+      google.script.run.withSuccessHandler(()=>{ showToast('Dihapus'); loadWallets(); }).deleteWallet(id);
+    });
   }
 
   // ---------- SUBSCRIPTIONS ----------
@@ -1505,8 +1584,9 @@
     });
   }
   function removeSub(id){
-    if (!confirm('Hapus langganan ini?')) return;
-    google.script.run.withSuccessHandler(()=>{ showToast('Dihapus'); loadSubs(); }).deleteSubscription(id);
+    askConfirm('Hapus langganan ini?', () => {
+      google.script.run.withSuccessHandler(()=>{ showToast('Dihapus'); loadSubs(); }).deleteSubscription(id);
+    });
   }
 
   function triggerReceiptScan(){
