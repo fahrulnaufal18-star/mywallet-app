@@ -240,7 +240,20 @@
   .ai-input-row{display:flex;gap:8px;align-items:center;margin-top:10px;}
   .ai-input-row .field-input{flex:1;}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // Kalau ada error JavaScript fatal, tampilkan pesannya di layar (bukan blank kosong)
+  window.addEventListener('error', function(e){
+    if (document.getElementById('fatal-error-banner')) return;
+    const div = document.createElement('div');
+    div.id = 'fatal-error-banner';
+    div.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:99999;padding:24px;font-family:sans-serif;color:#101828;overflow:auto;';
+    div.innerHTML = '<h2 style="color:#ef4444;">Terjadi error</h2><p style="font-size:13px;white-space:pre-wrap;">' +
+      (e.message || 'Unknown error') + '\n\nFile: ' + (e.filename||'-') + ' baris ' + (e.lineno||'-') +
+      '</p><p style="font-size:12px;color:#667085;">Screenshot pesan ini dan kirim ke Claude untuk diperbaiki.</p>';
+    document.body.appendChild(div);
+  });
+</script>
 </head>
 <body>
 <div id="loading-bar"></div>
