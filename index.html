@@ -1140,6 +1140,7 @@
     const navBtn = document.querySelector('.nav-item[data-nav="'+name+'"]');
     if (navBtn) navBtn.classList.add('active');
 
+    if (name === 'beranda') loadDashboard();
     if (name === 'transaksi') loadTransactions();
     if (name === 'laporan') loadReport();
     if (name === 'budget') loadBudgets();
@@ -1201,10 +1202,13 @@
     } catch (e) { /* abaikan kalau cache rusak/tidak ada */ }
 
     // Lalu tetap ambil data terbaru dari server di belakang layar
-    google.script.run.withSuccessHandler((data) => {
-      onBootstrap(data);
-      try { localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage penuh, lewati */ }
-    }).getBootstrapData();
+    google.script.run
+      .withSuccessHandler((data) => {
+        onBootstrap(data);
+        try { localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage penuh, lewati */ }
+      })
+      .withFailureHandler((err) => { console.error(err); showToast('Gagal memuat data terbaru, coba refresh halaman'); })
+      .getBootstrapData();
   }
 
   // Kalau app dibuka sebagai PWA (di-install), buka-tutup app TIDAK me-reload halaman,
@@ -1218,10 +1222,13 @@
     if (now - _lastRefreshAt < 10000) return;
     _lastRefreshAt = now;
     document.getElementById('greetingText').textContent = greetingByTime() + ' 👋';
-    google.script.run.withSuccessHandler((data) => {
-      onBootstrap(data);
-      try { localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage penuh, lewati */ }
-    }).getBootstrapData();
+    google.script.run
+      .withSuccessHandler((data) => {
+        onBootstrap(data);
+        try { localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage penuh, lewati */ }
+      })
+      .withFailureHandler((err) => { console.error(err); showToast('Gagal refresh data, coba lagi'); })
+      .getBootstrapData();
     // Refresh juga data halaman yang sedang aktif (transaksi, laporan, dll), bukan cuma ringkasan.
     const activePage = document.querySelector('.page.active');
     if (activePage) showPage(activePage.id.replace('page-',''));
@@ -1245,6 +1252,13 @@
       const el = document.getElementById(id);
       el.innerHTML = STATE.wallets.map(w=>'<option value="'+w.id+'">'+w.name+'</option>').join('');
     });
+  }
+
+  function loadDashboard(){
+    google.script.run
+      .withSuccessHandler((data) => { renderDashboard(data); })
+      .withFailureHandler((err) => { console.error(err); showToast('Gagal memuat ringkasan dashboard, coba refresh'); })
+      .getDashboardSummary();
   }
 
   function renderDashboard(d){
