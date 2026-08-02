@@ -464,7 +464,7 @@
 </div>
 
 <!-- ===================== BOTTOM NAV ===================== -->
-<div class="navbar">
+<div class="navbar" style="display:none;">
   <button class="nav-item active" data-nav="beranda" onclick="showPage('beranda')">🏠<span>Beranda</span></button>
   <button class="nav-item" data-nav="transaksi" onclick="showPage('transaksi')">📋<span>Transaksi</span></button>
   <button class="nav-fab" onclick="openTxModal('expense')">+</button>
@@ -646,7 +646,7 @@
 </div>
 
 <!-- ===================== FLOATING WLLT-Ai BUTTON ===================== -->
-<button class="ai-fab" onclick="openAiChat()">🤖</button>
+<button class="ai-fab" style="display:none;" onclick="openAiChat()">🤖</button>
 
 <!-- ===================== WLLT-Ai CHAT OVERLAY ===================== -->
 <div class="overlay" id="modal-ai">
@@ -679,7 +679,7 @@
   // ======================================================================
   // KONFIGURASI SUPABASE — ganti sesuai project kamu
   // ======================================================================
-  const SUPABASE_URL = 'https://byiiyoxwafbvbfyykpxf.sb.co';
+  const SUPABASE_URL = 'https://byiiyoxwafbvbfyykpxf.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5aWl5b3h3YWZidmJmeXlrcHhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2NDI2MjUsImV4cCI6MjEwMTIxODYyNX0.Gx-YW5d8bLlOkA7OmpHoLiD1QrZOUTjjfk9AqBVoeQM';
 
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -1004,10 +1004,14 @@
   function showAuthScreen(){
     document.getElementById('auth-screen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
+    document.querySelector('.navbar').style.display = 'none';
+    document.querySelector('.ai-fab').style.display = 'none';
   }
   function showApp(){
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
+    document.querySelector('.navbar').style.display = 'flex';
+    document.querySelector('.ai-fab').style.display = 'flex';
     if (window._appBooted) return;
     window._appBooted = true;
     bootApp();
