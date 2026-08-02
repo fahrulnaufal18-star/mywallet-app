@@ -1207,6 +1207,31 @@
     }).getBootstrapData();
   }
 
+  // Kalau app dibuka sebagai PWA (di-install), buka-tutup app TIDAK me-reload halaman,
+  // jadi bootApp() di atas cuma jalan sekali. Ini bikin data auto-refresh tiap kali
+  // app dibuka/kembali aktif (buka lagi dari home screen, switch tab, dsb), dengan
+  // sedikit throttle biar tidak spam request kalau berkali-kali buka-tutup dalam waktu dekat.
+  let _lastRefreshAt = 0;
+  function refreshAppData(){
+    if (!window._appBooted) return; // belum login/boot, biarkan alur normal yang jalan
+    const now = Date.now();
+    if (now - _lastRefreshAt < 10000) return;
+    _lastRefreshAt = now;
+    document.getElementById('greetingText').textContent = greetingByTime() + ' 👋';
+    google.script.run.withSuccessHandler((data) => {
+      onBootstrap(data);
+      try { localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage penuh, lewati */ }
+    }).getBootstrapData();
+    // Refresh juga data halaman yang sedang aktif (transaksi, laporan, dll), bukan cuma ringkasan.
+    const activePage = document.querySelector('.page.active');
+    if (activePage) showPage(activePage.id.replace('page-',''));
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshAppData();
+  });
+  window.addEventListener('pageshow', () => refreshAppData());
+  window.addEventListener('focus', () => refreshAppData());
+
   function onBootstrap(data){
     STATE.wallets = data.wallets;
     fillWalletSelects();
