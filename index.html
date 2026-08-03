@@ -1004,6 +1004,11 @@
       if (error) throw error;
       return true;
     },
+    processDueSubscriptions: async () => {
+      const { data, error } = await sb.rpc('process_due_subscriptions');
+      if (error) throw error;
+      return data; // jumlah tagihan yang berhasil dipotong otomatis
+    },
 
     getChatHistory: async (limit) => {
       const { data, error } = await sb.from('chat_log').select('*').order('created_at', { ascending: false }).limit(limit || 40);
@@ -1248,6 +1253,28 @@
     })[fnName].apply(null, args);
   }
 
+  function fetchBootstrapAndRender(errorToastMsg){
+    google.script.run
+      .withSuccessHandler((data) => {
+        onBootstrap(data);
+        try { localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage penuh, lewati */ }
+      })
+      .withFailureHandler((err) => { console.error(err); showToast(errorToastMsg); })
+      .getBootstrapData();
+  }
+
+  // Cek & potong otomatis langganan yang sudah jatuh tempo (due_date <= hari ini),
+  // lalu majukan jatuh temponya ke siklus berikutnya. Dijalankan tiap kali app dibuka/refresh.
+  function chargeDueSubscriptions(onDone){
+    google.script.run
+      .withSuccessHandler((count) => {
+        if (count > 0) showToast(count + ' tagihan langganan otomatis kepotong hari ini');
+        if (onDone) onDone();
+      })
+      .withFailureHandler((err) => { console.error(err); if (onDone) onDone(); })
+      .processDueSubscriptions();
+  }
+
   function bootApp() {
     document.getElementById('greetingText').textContent = greetingByTime() + ' 👋';
     document.getElementById('tx-date').value = todayLocalISO();
@@ -1258,14 +1285,8 @@
       if (cached) onBootstrap(JSON.parse(cached));
     } catch (e) { /* abaikan kalau cache rusak/tidak ada */ }
 
-    // Lalu tetap ambil data terbaru dari server di belakang layar
-    google.script.run
-      .withSuccessHandler((data) => {
-        onBootstrap(data);
-        try { localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage penuh, lewati */ }
-      })
-      .withFailureHandler((err) => { console.error(err); showToast('Gagal memuat data terbaru, coba refresh halaman'); })
-      .getBootstrapData();
+    // Lalu potong langganan yang jatuh tempo, baru ambil data terbaru dari server
+    chargeDueSubscriptions(() => fetchBootstrapAndRender('Gagal memuat data terbaru, coba refresh halaman'));
   }
 
   // Kalau app dibuka sebagai PWA (di-install), buka-tutup app TIDAK me-reload halaman,
@@ -1279,13 +1300,7 @@
     if (now - _lastRefreshAt < 10000) return;
     _lastRefreshAt = now;
     document.getElementById('greetingText').textContent = greetingByTime() + ' 👋';
-    google.script.run
-      .withSuccessHandler((data) => {
-        onBootstrap(data);
-        try { localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(data)); } catch (e) { /* storage penuh, lewati */ }
-      })
-      .withFailureHandler((err) => { console.error(err); showToast('Gagal refresh data, coba lagi'); })
-      .getBootstrapData();
+    chargeDueSubscriptions(() => fetchBootstrapAndRender('Gagal refresh data, coba lagi'));
     // Refresh juga data halaman yang sedang aktif (transaksi, laporan, dll), bukan cuma ringkasan.
     const activePage = document.querySelector('.page.active');
     if (activePage) showPage(activePage.id.replace('page-',''));
