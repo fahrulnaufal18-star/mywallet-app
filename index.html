@@ -732,7 +732,10 @@
           <div style="font-size:11px;color:var(--text-muted);">Powered by Gemini</div>
         </div>
       </div>
-      <button class="close-x" onclick="closeModal('modal-ai')">✕</button>
+      <div style="display:flex;gap:6px;">
+        <button class="close-x" onclick="refreshAiChat()" title="Refresh chat">🔄</button>
+        <button class="close-x" onclick="closeModal('modal-ai')">✕</button>
+      </div>
     </div>
     <div id="ai-messages" class="ai-messages"></div>
     <div class="ai-input-row">
@@ -1014,6 +1017,11 @@
       const { data, error } = await sb.from('chat_log').select('*').order('created_at', { ascending: false }).limit(limit || 40);
       if (error) throw error;
       return data.reverse().map(r => ({ timestamp: r.created_at, role: r.role, message: r.message }));
+    },
+    clearChatHistory: async () => {
+      const { error } = await sb.from('chat_log').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) throw error;
+      return true;
     },
     askWlltAi: async (message) => {
       const { data, error } = await sb.functions.invoke('wllt-ai', { body: { action: 'chat', message } });
@@ -1762,6 +1770,18 @@
       google.script.run.withSuccessHandler(renderChatHistory).getChatHistory(30);
     }
     setTimeout(()=>document.getElementById('ai-input').focus(), 200);
+  }
+  function refreshAiChat(){
+    askConfirm('Mulai obrolan baru? Riwayat chat sebelumnya akan dihapus.', () => {
+      google.script.run
+        .withSuccessHandler(()=>{
+          document.getElementById('ai-messages').innerHTML = '';
+          renderChatHistory([]);
+          showToast('Chat di-refresh');
+        })
+        .withFailureHandler((err)=>{ console.error(err); showToast('Gagal refresh chat'); })
+        .clearChatHistory();
+    });
   }
   function renderChatHistory(rows){
     const box = document.getElementById('ai-messages');
