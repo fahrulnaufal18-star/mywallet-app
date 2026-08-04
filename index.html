@@ -276,6 +276,9 @@
     <input class="field-input" type="text" id="auth-email" placeholder="email atau username kamu" autocomplete="username" onkeydown="if(event.key==='Enter') submitAuth()">
     <div class="field-label">Password</div>
     <input class="field-input" type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter') submitAuth()">
+    <div id="auth-forgot-wrap" style="text-align:right;margin-top:8px;">
+      <a href="javascript:void(0)" onclick="openForgotPasswordModal()" style="font-size:13px;color:#4f46e5;">Lupa password?</a>
+    </div>
     <div class="auth-error" id="auth-error"></div>
     <button class="save-btn" id="auth-submit-btn" onclick="submitAuth()">Masuk</button>
   </div>
@@ -679,6 +682,31 @@
     <div class="field-label">Saldo Awal (Rp)</div>
     <input class="field-input" type="number" id="wl-balance" value="0">
     <button class="save-btn" onclick="submitWallet()">Simpan</button>
+  </div>
+</div>
+
+<!-- ===================== MODAL: LUPA PASSWORD ===================== -->
+<div class="overlay" id="modal-forgot-password">
+  <div class="sheet">
+    <div class="sheet-head"><h2>Lupa Password</h2><button class="close-x" onclick="closeModal('modal-forgot-password')">✕</button></div>
+    <div class="field-label">Email / Username</div>
+    <input class="field-input" type="text" id="fp-email" placeholder="email atau username kamu">
+    <div id="fp-message" style="margin:10px 0;font-size:13px;"></div>
+    <button class="save-btn" onclick="submitForgotPassword()">Kirim Link Reset</button>
+  </div>
+</div>
+
+<!-- ===================== MODAL: BUAT PASSWORD BARU (setelah klik link reset dari email) ===================== -->
+<div class="overlay" id="modal-set-new-password">
+  <div class="sheet">
+    <div class="sheet-head"><h2>Buat Password Baru</h2></div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Kamu klik link reset password dari email. Buat password baru untuk akun kamu.</div>
+    <div class="field-label">Password Baru</div>
+    <input class="field-input" type="password" id="rp-new-password" placeholder="Minimal 6 karakter">
+    <div class="field-label">Ulangi Password Baru</div>
+    <input class="field-input" type="password" id="rp-new-password2" placeholder="Ulangi password baru">
+    <div id="rp-message" style="margin:10px 0;font-size:13px;"></div>
+    <button class="save-btn" onclick="submitSetNewPassword()">Simpan Password Baru</button>
   </div>
 </div>
 
@@ -1105,15 +1133,19 @@
   // ======================================================================
   // AUTENTIKASI: gerbang login sebelum masuk ke aplikasi
   // ======================================================================
-  // Deteksi kalau halaman ini dibuka dari link "Confirm your email address",
-  // supaya bisa kasih tau user kalau emailnya sudah berhasil dikonfirmasi.
+  // Deteksi kalau halaman ini dibuka dari link "Confirm your email address" atau link reset password,
+  // supaya bisa kasih tau user kalau emailnya sudah berhasil dikonfirmasi / munculin form password baru.
   let _emailJustConfirmed = false;
+  let _isPasswordRecovery = false;
   (function checkEmailConfirmRedirect(){
     try {
       const qs = new URLSearchParams(window.location.search);
       const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
       const type = qs.get('type') || hash.get('type');
-      if (type === 'signup' || type === 'email_change') {
+      if (type === 'recovery') {
+        _isPasswordRecovery = true;
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (type === 'signup' || type === 'email_change') {
         _emailJustConfirmed = true;
         window.history.replaceState({}, document.title, window.location.pathname);
       }
@@ -1137,6 +1169,12 @@
     document.getElementById('app').style.display = 'block';
     document.querySelector('.navbar').style.display = 'flex';
     document.querySelector('.ai-fab').style.display = 'flex';
+    if (_isPasswordRecovery){
+      document.getElementById('rp-new-password').value = '';
+      document.getElementById('rp-new-password2').value = '';
+      document.getElementById('rp-message').textContent = '';
+      openModal('modal-set-new-password');
+    }
     if (_emailJustConfirmed){
       _emailJustConfirmed = false;
       setTimeout(()=>showToast('Email berhasil dikonfirmasi! 🎉'), 500);
@@ -1155,6 +1193,7 @@
     document.getElementById('auth-username-wrap').style.display = mode==='signup' ? 'block' : 'none';
     document.getElementById('auth-email-label').textContent = mode==='signin' ? 'Email / Username' : 'Email';
     document.getElementById('auth-email').placeholder = mode==='signin' ? 'email atau username kamu' : 'kamu@email.com';
+    document.getElementById('auth-forgot-wrap').style.display = mode==='signin' ? 'block' : 'none';
     document.getElementById('auth-error').textContent = '';
   }
   // Terjemahkan pesan error Supabase Auth yang masih bahasa Inggris jadi lebih natural
@@ -1175,20 +1214,64 @@
     if (error || !data) return null;
     return data;
   }
+
+  // Batasi percobaan login yang salah berturut-turut, biar gak bisa dicoba-coba terus (brute force).
+  // Disimpan di localStorage per email/username, jadi tetap berlaku walau app di-refresh.
+  const LOGIN_LOCK_PREFIX = 'mywallet_login_fail_';
+  const MAX_LOGIN_ATTEMPTS = 5;
+  const LOGIN_LOCK_DURATION_MS = 60 * 1000; // 1 menit
+  function getLoginFailState(identifier){
+    try {
+      const raw = localStorage.getItem(LOGIN_LOCK_PREFIX + identifier.toLowerCase());
+      return raw ? JSON.parse(raw) : { count: 0, lockUntil: 0 };
+    } catch (e) { return { count: 0, lockUntil: 0 }; }
+  }
+  function setLoginFailState(identifier, state){
+    try { localStorage.setItem(LOGIN_LOCK_PREFIX + identifier.toLowerCase(), JSON.stringify(state)); } catch (e) { /* lewati */ }
+  }
+  function clearLoginFailState(identifier){
+    try { localStorage.removeItem(LOGIN_LOCK_PREFIX + identifier.toLowerCase()); } catch (e) { /* lewati */ }
+  }
+  function recordLoginFail(identifier){
+    const state = getLoginFailState(identifier);
+    state.count = (state.count || 0) + 1;
+    let locked = false;
+    if (state.count >= MAX_LOGIN_ATTEMPTS) {
+      state.lockUntil = Date.now() + LOGIN_LOCK_DURATION_MS;
+      state.count = 0;
+      locked = true;
+    }
+    setLoginFailState(identifier, state);
+    return { locked, attemptsLeft: MAX_LOGIN_ATTEMPTS - state.count };
+  }
+
   async function submitAuth(){
     const emailOrUsername = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
     const username = document.getElementById('auth-username').value.trim();
     const errEl = document.getElementById('auth-error');
+    errEl.style.color = '#ef4444';
     errEl.textContent = '';
     if (!emailOrUsername || !password) { errEl.textContent = 'Isi email/username dan password dulu ya.'; return; }
     if (authMode === 'signup' && !username) { errEl.textContent = 'Isi username dulu ya.'; return; }
+
+    if (authMode === 'signin') {
+      const failState = getLoginFailState(emailOrUsername);
+      const now = Date.now();
+      if (failState.lockUntil && failState.lockUntil > now) {
+        const secsLeft = Math.ceil((failState.lockUntil - now) / 1000);
+        errEl.textContent = 'Kebanyakan percobaan gagal. Coba lagi dalam ' + secsLeft + ' detik.';
+        return;
+      }
+    }
+
     try {
       if (authMode === 'signin') {
         const loginEmail = await resolveLoginEmail(emailOrUsername);
         if (!loginEmail) throw new Error('Invalid login credentials');
         const { error } = await sb.auth.signInWithPassword({ email: loginEmail, password });
         if (error) throw error;
+        clearLoginFailState(emailOrUsername);
       } else {
         const { error } = await sb.auth.signUp({
           email: emailOrUsername, password,
@@ -1204,8 +1287,48 @@
       }
     } catch (e) {
       errEl.style.color = '#ef4444';
-      errEl.textContent = friendlyAuthError(e.message || String(e));
+      if (authMode === 'signin') {
+        const info = recordLoginFail(emailOrUsername);
+        errEl.textContent = info.locked
+          ? 'Kebanyakan percobaan gagal. Coba lagi dalam 60 detik.'
+          : friendlyAuthError(e.message || String(e)) + ' (percobaan tersisa: ' + info.attemptsLeft + ')';
+      } else {
+        errEl.textContent = friendlyAuthError(e.message || String(e));
+      }
     }
+  }
+
+  function openForgotPasswordModal(){
+    const current = document.getElementById('auth-email').value.trim();
+    document.getElementById('fp-email').value = current;
+    document.getElementById('fp-message').textContent = '';
+    openModal('modal-forgot-password');
+  }
+  async function submitForgotPassword(){
+    const identifier = document.getElementById('fp-email').value.trim();
+    const msgEl = document.getElementById('fp-message');
+    msgEl.style.color = '#ef4444';
+    if (!identifier){ msgEl.textContent = 'Isi email/username dulu ya.'; return; }
+    const email = await resolveLoginEmail(identifier);
+    if (!email){ msgEl.textContent = 'Email/username tidak ditemukan.'; return; }
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+    if (error){ msgEl.textContent = friendlyAuthError(error.message || String(error)); return; }
+    msgEl.style.color = '#22c55e';
+    msgEl.textContent = 'Link reset password sudah dikirim ke email kamu. Cek inbox ya.';
+  }
+  function submitSetNewPassword(){
+    const p1 = document.getElementById('rp-new-password').value;
+    const p2 = document.getElementById('rp-new-password2').value;
+    const msgEl = document.getElementById('rp-message');
+    msgEl.style.color = '#ef4444';
+    if (!p1 || p1.length < 6){ msgEl.textContent = 'Password minimal 6 karakter'; return; }
+    if (p1 !== p2){ msgEl.textContent = 'Password baru tidak sama'; return; }
+    sb.auth.updateUser({ password: p1 }).then(({ error }) => {
+      if (error){ msgEl.style.color = '#ef4444'; msgEl.textContent = friendlyAuthError(error.message || String(error)); return; }
+      _isPasswordRecovery = false;
+      closeModal('modal-set-new-password');
+      showToast('Password berhasil diganti!');
+    });
   }
   function logout(){
     sb.auth.signOut().then(() => { window._appBooted = false; showAuthScreen(); });
@@ -1234,6 +1357,7 @@
   }
 
   sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') _isPasswordRecovery = true;
     if (session) showApp(); else showAuthScreen();
   });
   sb.auth.getSession().then(({ data }) => {
