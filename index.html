@@ -268,6 +268,10 @@
       <button id="auth-tab-signin" class="active" onclick="setAuthMode('signin')">Masuk</button>
       <button id="auth-tab-signup" onclick="setAuthMode('signup')">Daftar</button>
     </div>
+    <div id="auth-username-wrap" style="display:none;">
+      <div class="field-label">Username</div>
+      <input class="field-input" type="text" id="auth-username" placeholder="username_kamu" autocomplete="username" onkeydown="if(event.key==='Enter') submitAuth()">
+    </div>
     <div class="field-label">Email</div>
     <input class="field-input" type="email" id="auth-email" placeholder="kamu@email.com" autocomplete="email" onkeydown="if(event.key==='Enter') submitAuth()">
     <div class="field-label">Password</div>
@@ -470,6 +474,8 @@
     <div class="list-sub">Info akun kamu</div>
 
     <div class="white-card">
+      <div class="field-label">Username</div>
+      <div style="font-weight:600;font-size:16px;margin-bottom:14px;" id="profile-username">-</div>
       <div class="field-label">Email</div>
       <div style="font-weight:600;font-size:16px;" id="profile-email">-</div>
     </div>
@@ -1099,17 +1105,42 @@
   // ======================================================================
   // AUTENTIKASI: gerbang login sebelum masuk ke aplikasi
   // ======================================================================
+  // Deteksi kalau halaman ini dibuka dari link "Confirm your email address",
+  // supaya bisa kasih tau user kalau emailnya sudah berhasil dikonfirmasi.
+  let _emailJustConfirmed = false;
+  (function checkEmailConfirmRedirect(){
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const type = qs.get('type') || hash.get('type');
+      if (type === 'signup' || type === 'email_change') {
+        _emailJustConfirmed = true;
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch (e) { /* abaikan */ }
+  })();
+
   function showAuthScreen(){
     document.getElementById('auth-screen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
     document.querySelector('.navbar').style.display = 'none';
     document.querySelector('.ai-fab').style.display = 'none';
+    if (_emailJustConfirmed){
+      _emailJustConfirmed = false;
+      const errEl = document.getElementById('auth-error');
+      errEl.style.color = '#22c55e';
+      errEl.textContent = 'Email berhasil dikonfirmasi! Silakan masuk.';
+    }
   }
   function showApp(){
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.querySelector('.navbar').style.display = 'flex';
     document.querySelector('.ai-fab').style.display = 'flex';
+    if (_emailJustConfirmed){
+      _emailJustConfirmed = false;
+      setTimeout(()=>showToast('Email berhasil dikonfirmasi! 🎉'), 500);
+    }
     if (window._appBooted) return;
     window._appBooted = true;
     bootApp();
@@ -1121,19 +1152,40 @@
     document.getElementById('auth-tab-signin').classList.toggle('active', mode==='signin');
     document.getElementById('auth-tab-signup').classList.toggle('active', mode==='signup');
     document.getElementById('auth-submit-btn').textContent = mode==='signin' ? 'Masuk' : 'Daftar';
+    document.getElementById('auth-username-wrap').style.display = mode==='signup' ? 'block' : 'none';
+    document.getElementById('auth-error').textContent = '';
+  }
+  // Terjemahkan pesan error Supabase Auth yang masih bahasa Inggris jadi lebih natural
+  function friendlyAuthError(msg){
+    const m = (msg||'').toLowerCase();
+    if (m.includes('invalid login credentials')) return 'Username/email atau password salah.';
+    if (m.includes('user already registered') || m.includes('already registered')) return 'Email ini sudah terdaftar. Coba masuk (login) saja.';
+    if (m.includes('password should be at least')) return 'Password minimal 6 karakter.';
+    if (m.includes('email not confirmed')) return 'Email belum dikonfirmasi. Cek inbox kamu dulu ya.';
+    if (m.includes('unable to validate email') || m.includes('invalid email')) return 'Format email tidak valid.';
+    if (m.includes('rate limit')) return 'Terlalu banyak percobaan, coba lagi sebentar lagi.';
+    return msg;
   }
   async function submitAuth(){
     const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
+    const username = document.getElementById('auth-username').value.trim();
     const errEl = document.getElementById('auth-error');
     errEl.textContent = '';
     if (!email || !password) { errEl.textContent = 'Isi email dan password dulu ya.'; return; }
+    if (authMode === 'signup' && !username) { errEl.textContent = 'Isi username dulu ya.'; return; }
     try {
       if (authMode === 'signin') {
         const { error } = await sb.auth.signInWithPassword({ email, password });
         if (error) throw error;
       } else {
-        const { error } = await sb.auth.signUp({ email, password });
+        const { error } = await sb.auth.signUp({
+          email, password,
+          options: {
+            data: { username },
+            emailRedirectTo: window.location.origin + window.location.pathname
+          }
+        });
         if (error) throw error;
         errEl.style.color = '#22c55e';
         errEl.textContent = 'Akun dibuat! Kalau diminta verifikasi email, cek inbox kamu, lalu login.';
@@ -1141,7 +1193,7 @@
       }
     } catch (e) {
       errEl.style.color = '#ef4444';
-      errEl.textContent = e.message || String(e);
+      errEl.textContent = friendlyAuthError(e.message || String(e));
     }
   }
   function logout(){
@@ -1151,7 +1203,10 @@
   // ---------- PROFILE & GANTI PASSWORD ----------
   function loadProfile(){
     sb.auth.getUser().then(({ data, error }) => {
-      document.getElementById('profile-email').textContent = (!error && data && data.user) ? data.user.email : '-';
+      const user = (!error && data) ? data.user : null;
+      document.getElementById('profile-email').textContent = user ? user.email : '-';
+      const usernameEl = document.getElementById('profile-username');
+      if (usernameEl) usernameEl.textContent = (user && user.user_metadata && user.user_metadata.username) ? user.user_metadata.username : '-';
     });
   }
   function submitChangePassword(){
